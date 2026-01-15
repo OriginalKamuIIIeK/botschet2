@@ -10,6 +10,10 @@ from flask import Flask
 
 # ========== ВЕБ-СЕРВЕР ДЛЯ RENDER ==========
 PORT = 10000
+
+# ========== НАСТРОЙКИ ==========
+TOKEN = "8114014716:AAFwW5y7O3goMXWtZm6scpxEj-5VloP37ro"
+MAIN_ADMIN = 7656583864
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
@@ -29,9 +33,7 @@ web_thread = threading.Thread(target=run_web_server, daemon=True)
 web_thread.start()
 time.sleep(2)
 
-# ========== НАСТРОЙКИ ==========
-TOKEN = "8114014716:AAFwW5y7O3goMXWtZm6scpxEj-5VloP37ro"
-MAIN_ADMIN = 7656583864
+
 
 
 # ========== СИСТЕМА ХРАНЕНИЯ ==========
