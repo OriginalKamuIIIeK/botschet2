@@ -31,7 +31,7 @@ time.sleep(2)
 
 # ========== НАСТРОЙКИ ==========
 TOKEN = "8114014716:AAFwW5y7O3goMXWtZm6scpxEj-5VloP37ro"
-MAIN_ADMIN = 7620190298
+MAIN_ADMIN = 7656583864
 
 # Очистка вебхуков
 try:
