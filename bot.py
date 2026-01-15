@@ -33,15 +33,6 @@ time.sleep(2)
 TOKEN = "8114014716:AAFwW5y7O3goMXWtZm6scpxEj-5VloP37ro"
 MAIN_ADMIN = 7656583864
 
-# Очистка вебхуков
-try:
-    telebot.apihelper.API_URL = f"https://api.telegram.org/bot{TOKEN}/"
-    telebot.apihelper._make_request(TOKEN, "deleteWebhook", {})
-    print("✅ Вебхуки очищены")
-except:
-    print("⚠️ Ошибка очистки вебхуков")
-
-bot = telebot.TeleBot(TOKEN)
 
 # ========== СИСТЕМА ХРАНЕНИЯ ==========
 DATA_DIR = "data"
