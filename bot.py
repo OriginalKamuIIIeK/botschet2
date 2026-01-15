@@ -10,7 +10,7 @@ from flask import Flask
 
 # ========== ВЕБ-СЕРВЕР ДЛЯ RENDER ==========
 PORT = 10000
-
+bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
 @app.route('/')
