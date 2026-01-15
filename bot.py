@@ -7,9 +7,9 @@ import re
 
 # ТВОИ ДАННЫЕ
 TOKEN = "8274329230:AAE6NGyu5_R_RuiYvn6GB8HFAqMcbqTpvrw"
-MAIN_ADMIN = 7620190298  # Твой ID (главный админ)
+MAIN_ADMIN = 7620190298
 
-# Очистка вебхуков перед запуском
+# Очистка вебхуков
 def clear_webhook(token):
     try:
         telebot.apihelper.API_URL = f"https://api.telegram.org/bot{token}/"
@@ -23,38 +23,78 @@ clear_webhook(TOKEN)
 # Инициализация бота
 bot = telebot.TeleBot(TOKEN)
 
-# Файлы для хранения
-DATA_FILE = "data.json"
-ADMINS_FILE = "admins.json"
+# Файлы для хранения - АБСОЛЮТНЫЕ ПУТИ
+DATA_FILE = "/data/data.json" if os.path.isdir("/data") else "data.json"
+ADMINS_FILE = "/data/admins.json" if os.path.isdir("/data") else "admins.json"
+
+print(f"📁 Файл данных: {DATA_FILE}")
+print(f"📁 Файл админов: {ADMINS_FILE}")
+
+# СОЗДАЕМ ПАПКУ /data ЕСЛИ НЕТ
+if "/data" in DATA_FILE and not os.path.exists("/data"):
+    os.makedirs("/data", exist_ok=True)
+    print("✅ Создана папка /data")
+
+# Создаем файлы если их нет
+def init_files():
+    # Создаем data.json
+    if not os.path.exists(DATA_FILE):
+        default_data = {
+            "balance": 0.0,
+            "total_earned": 0.0,
+            "total_paid": 0.0,
+            "rate": 92.5,
+            "percent": 2.5,
+            "transactions": [],
+            "payments": []
+        }
+        with open(DATA_FILE, 'w', encoding='utf-8') as f:
+            json.dump(default_data, f, indent=2, ensure_ascii=False)
+        print(f"✅ Создан файл {DATA_FILE}")
+    
+    # Создаем admins.json
+    if not os.path.exists(ADMINS_FILE):
+        default_admins = [MAIN_ADMIN]
+        with open(ADMINS_FILE, 'w') as f:
+            json.dump(default_admins, f)
+        print(f"✅ Создан файл {ADMINS_FILE}")
+
+# Инициализируем файлы
+init_files()
 
 # Загрузка данных
 def load_data():
     try:
-        if os.path.exists(DATA_FILE):
-            with open(DATA_FILE, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                # Конвертируем старые значения
-                data['balance'] = float(data.get('balance', 0))
-                data['total_earned'] = float(data.get('total_earned', 0))
-                data['total_paid'] = float(data.get('total_paid', 0))
-                data['rate'] = float(data.get('rate', 92.5))
-                data['percent'] = float(data.get('percent', 2.5))
-                return data
-    except:
-        pass
-    return {
-        "balance": 0.0,
-        "total_earned": 0.0,
-        "total_paid": 0.0,
-        "rate": 92.5,
-        "percent": 2.5,
-        "transactions": [],
-        "payments": []
-    }
+        with open(DATA_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            # Конвертируем старые значения
+            data['balance'] = float(data.get('balance', 0))
+            data['total_earned'] = float(data.get('total_earned', 0))
+            data['total_paid'] = float(data.get('total_paid', 0))
+            data['rate'] = float(data.get('rate', 92.5))
+            data['percent'] = float(data.get('percent', 2.5))
+            return data
+    except Exception as e:
+        print(f"❌ Ошибка загрузки данных: {e}")
+        # Если ошибка, возвращаем дефолтные значения
+        return {
+            "balance": 0.0,
+            "total_earned": 0.0,
+            "total_paid": 0.0,
+            "rate": 92.5,
+            "percent": 2.5,
+            "transactions": [],
+            "payments": []
+        }
 
 def save_data(data):
-    with open(DATA_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    try:
+        with open(DATA_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        return True
+    except Exception as e:
+        print(f"❌ Ошибка сохранения данных: {e}")
+        return False
 
 # Загрузка админов
 def load_admins():
@@ -62,18 +102,23 @@ def load_admins():
         if os.path.exists(ADMINS_FILE):
             with open(ADMINS_FILE, 'r') as f:
                 admins = json.load(f)
-                # Добавляем главного админа если его нет
-                if MAIN_ADMIN not in admins:
-                    admins.append(MAIN_ADMIN)
-                    save_admins(admins)
-                return admins
-    except:
-        pass
+                # Проверяем что это список
+                if isinstance(admins, list):
+                    return admins
+    except Exception as e:
+        print(f"❌ Ошибка загрузки админов: {e}")
+    
+    # Если файла нет или ошибка, создаем с главным админом
     return [MAIN_ADMIN]
 
 def save_admins(admins):
-    with open(ADMINS_FILE, 'w') as f:
-        json.dump(admins, f)
+    try:
+        with open(ADMINS_FILE, 'w') as f:
+            json.dump(admins, f)
+        return True
+    except Exception as e:
+        print(f"❌ Ошибка сохранения админов: {e}")
+        return False
 
 # Проверка админа
 def is_admin(user_id):
@@ -89,15 +134,15 @@ def start_cmd(message):
         help_text = """✅ *БОТ БУХГАЛТЕРА ЗАПУЩЕН*
 
 *ОСНОВНЫЕ КОМАНДЫ:*
-➕ `+5000` - добавить 5000
+➕ `+5000` - добавить 5000₽
 💰 `выплата 1000` - выплатить 1000 USDT
 📊 `/balance` - баланс
 📈 `/stats` - статистика
 🕐 `/last` - последняя операция
 
 *НАСТРОЙКИ:*
-🔢 `/setrate 0` - установить курс
-📌 `/setpercent 0` - установить процент
+🔢 `/setrate 92.5` - установить курс
+📌 `/setpercent 2.5` - установить процент
 
 *АДМИНИСТРАЦИЯ:*
 👑 `/addadmin 123456789` - добавить админа
@@ -140,10 +185,11 @@ def add_money(message):
         
         save_data(data)
         
-        response = f"""✅ *+{amount:,.2f} *
+        response = f"""✅ *+{amount:,.2f} RUB*
 📊 *Курс:* {data['rate']} | *%:* {data['percent']}
 💵 *В USDT:* {usdt:.2f}
 📉 *Комиссия:* {fee:.2f}
+💰 *Чистыми:* {net:.2f}
 📈 *Баланс:* {data['balance']:.2f} USDT
 ⏰ *Время:* {transaction['time']}"""
         
@@ -214,7 +260,7 @@ def balance_cmd(message):
     response = f"""💰 *Текущий баланс:* {data['balance']:.2f} USDT
 📈 *Всего начислено:* {data['total_earned']:.2f} USDT
 📉 *Всего выплачено:* {data['total_paid']:.2f} USDT
-🔢 *Курс:* {data['rate']} = 1 USDT
+🔢 *Курс:* {data['rate']} RUB/USDT
 📌 *Процент:* {data['percent']}%"""
     
     bot.reply_to(message, response, parse_mode='Markdown')
@@ -268,6 +314,7 @@ def last_cmd(message):
 ➕ *Сумма:* {last.get('amount_rub', 0):,.2f} RUB
 💵 *В USDT:* {last.get('amount_usdt', 0):.2f}
 📉 *Комиссия:* {last.get('fee', 0):.2f}
+💰 *Чистыми:* {last.get('net', 0):.2f}
 📈 *Баланс после:* {last.get('balance_after', 0):.2f} USDT
 ⏰ *Время:* {last.get('time', 'Неизвестно')}"""
     
@@ -284,7 +331,7 @@ def setrate_cmd(message):
         data = load_data()
         data['rate'] = rate
         save_data(data)
-        bot.reply_to(message, f"✅ Курс установлен: 1 USDT = {rate}")
+        bot.reply_to(message, f"✅ Курс установлен: 1 USDT = {rate} RUB")
     except:
         bot.reply_to(message, "❌ Используйте: /setrate 92.5")
 
@@ -324,23 +371,25 @@ def addadmin_cmd(message):
             return
         
         admins.append(new_admin_id)
-        save_admins(admins)
-        
-        bot.reply_to(message, f"✅ Пользователь {new_admin_id} добавлен как администратор")
-        
-        # Уведомляем нового админа
-        try:
-            bot.send_message(
-                new_admin_id,
-                f"👋 Вас добавили как администратора бота-бухгалтера\n\n"
-                f"Доступные команды:\n"
-                f"+5000 - добавить сумму\n"
-                f"выплата 1000 - сделать выплату\n"
-                f"/balance - показать баланс\n"
-                f"/stats - статистика"
-            )
-        except:
-            pass
+        if save_admins(admins):
+            bot.reply_to(message, f"✅ Пользователь {new_admin_id} добавлен как администратор")
+            
+            # Уведомляем нового админа
+            try:
+                bot.send_message(
+                    new_admin_id,
+                    f"👋 Вас добавили как администратора бота-бухгалтера\n\n"
+                    f"Доступные команды:\n"
+                    f"+5000 - добавить сумму\n"
+                    f"выплата 1000 - сделать выплату\n"
+                    f"/balance - показать баланс\n"
+                    f"/stats - статистика\n\n"
+                    f"ID бота: @{(bot.get_me()).username}"
+                )
+            except Exception as e:
+                print(f"Не удалось уведомить нового админа: {e}")
+        else:
+            bot.reply_to(message, "❌ Ошибка сохранения списка админов")
             
     except ValueError:
         bot.reply_to(message, "❌ Неверный ID пользователя")
@@ -389,12 +438,41 @@ def help_cmd(message):
     
     bot.reply_to(message, help_text, parse_mode='Markdown')
 
+# /debug - для отладки
+@bot.message_handler(commands=['debug'])
+def debug_cmd(message):
+    if message.from_user.id != MAIN_ADMIN:
+        return
+    
+    debug_info = f"""🐛 *ИНФОРМАЦИЯ ДЛЯ ОТЛАДКИ:*
+
+*Файлы:*
+📁 data.json: {os.path.exists(DATA_FILE)}
+📁 admins.json: {os.path.exists(ADMINS_FILE)}
+*Пути:*
+📍 DATA_FILE: {DATA_FILE}
+📍 ADMINS_FILE: {ADMINS_FILE}
+*Директория:*
+📂 Текущая: {os.getcwd()}
+📂 Содержимое: {os.listdir('.')}
+*Админы:*
+👥 {load_admins()}
+*Данные:*
+📊 Баланс: {load_data().get('balance', 0)}"""
+    
+    bot.reply_to(message, debug_info, parse_mode='Markdown')
+
 # Запуск бота
 print("=" * 50)
 print("🚀 БОТ БУХГАЛТЕРА ЗАПУСКАЕТСЯ")
 print(f"👑 Главный админ: {MAIN_ADMIN}")
 print(f"💾 Файл данных: {DATA_FILE}")
 print(f"👥 Файл админов: {ADMINS_FILE}")
+print(f"📂 Текущая директория: {os.getcwd()}")
+print(f"📂 Содержимое: {os.listdir('.')}")
 print("=" * 50)
 
-bot.infinity_polling(timeout=60, long_polling_timeout=5)
+try:
+    bot.infinity_polling(timeout=60, long_polling_timeout=5)
+except Exception as e:
+    print(f"❌ Критическая ошибка: {e}")
