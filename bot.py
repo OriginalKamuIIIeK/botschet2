@@ -5,103 +5,111 @@ import telebot.apihelper
 from datetime import datetime
 import re
 import threading
+import time
 from flask import Flask
 
-
-# ТВОИ ДАННЫЕ
 # ========== ВЕБ-СЕРВЕР ДЛЯ RENDER ==========
-PORT = 10000  # Добавить эту строку
+PORT = 10000
 
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "🤖 Бот бухгалтера работает!"
+    return "🤖 Бот бухгалтера работает (полная версия)!"
 
 @app.route('/health')
 def health():
     return "OK", 200
 
-# Запускаем Flask в отдельном потоке
 def run_web_server():
     app.run(host='0.0.0.0', port=PORT, debug=False)
 
 print(f"🚀 Запускаю веб-сервер на порту {PORT}...")
 web_thread = threading.Thread(target=run_web_server, daemon=True)
 web_thread.start()
-TOKEN = "8114014716:AAFwW5y7O3goMXWtZm6scpxEj-5VloP37ro"  # ⚠️ ЗАМЕНИ!
+time.sleep(2)
+
+# ========== НАСТРОЙКИ ==========
+TOKEN = "8114014716:AAFwW5y7O3goMXWtZm6scpxEj-5VloP37ro"
 MAIN_ADMIN = 7620190298
 
+# Очистка вебхуков
+try:
+    telebot.apihelper.API_URL = f"https://api.telegram.org/bot{TOKEN}/"
+    telebot.apihelper._make_request(TOKEN, "deleteWebhook", {})
+    print("✅ Вебхуки очищены")
+except:
+    print("⚠️ Ошибка очистки вебхуков")
 
-# Инициализация бота
 bot = telebot.TeleBot(TOKEN)
 
-# ПУТИ ДЛЯ ХРАНЕНИЯ ДАННЫХ
-BASE_PATH = "/data" if os.path.isdir("/data") else "."
-GLOBAL_PATH = os.path.join(BASE_PATH, "global")
-CHATS_PATH = os.path.join(BASE_PATH, "chats")
-
-# Создаем папки если нет
-os.makedirs(GLOBAL_PATH, exist_ok=True)
-os.makedirs(CHATS_PATH, exist_ok=True)
+# ========== СИСТЕМА ХРАНЕНИЯ ==========
+DATA_DIR = "data"
+os.makedirs(DATA_DIR, exist_ok=True)
 
 # Файлы
-ADMINS_FILE = os.path.join(GLOBAL_PATH, "admins.json")
-SETTINGS_FILE = os.path.join(GLOBAL_PATH, "settings.json")
-
-print(f"📁 База данных: {BASE_PATH}")
-print(f"📁 Глобальные данные: {GLOBAL_PATH}")
-print(f"📁 Данные чатов: {CHATS_PATH}")
+ADMINS_FILE = os.path.join(DATA_DIR, "admins.json")
+SETTINGS_FILE = os.path.join(DATA_DIR, "global_settings.json")
 
 # ========== РАБОТА С ДАННЫМИ ==========
 
-def get_chat_filename(chat_id):
-    """Получаем имя файла для чата"""
-    return os.path.join(CHATS_PATH, f"chat_{chat_id}.json")
+def get_chat_file(chat_id):
+    """Получаем путь к файлу данных чата"""
+    return os.path.join(DATA_DIR, f"chat_{chat_id}.json")
 
-def load_chat_data(chat_id):
-    """Загружаем данные чата"""
-    chat_file = get_chat_filename(chat_id)
+def load_chat_data(chat_id, chat_title=""):
+    """Загружаем или создаем данные чата"""
+    chat_file = get_chat_file(chat_id)
     
     try:
         if os.path.exists(chat_file):
             with open(chat_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                # Конвертируем старые значения
+                # Конвертируем значения в float
                 for key in ['balance', 'total_earned', 'total_paid', 'rate', 'percent']:
                     if key in data:
                         data[key] = float(data[key])
                 return data
     except Exception as e:
-        print(f"❌ Ошибка загрузки данных чата {chat_id}: {e}")
+        print(f"Ошибка загрузки данных чата {chat_id}: {e}")
     
-    # Возвращаем данные по умолчанию
-    return {
+    # Создаем новые данные
+    title = chat_title if chat_title else ("Личный чат" if chat_id > 0 else "Группа")
+    
+    default_data = {
         "chat_id": chat_id,
-        "chat_title": "Личный чат" if chat_id > 0 else "Группа",
+        "chat_title": title,
         "balance": 0.0,
         "total_earned": 0.0,
         "total_paid": 0.0,
-        "rate": 0,      # Можно установить разные курсы для разных чатов
-        "percent": 0,    # И разные проценты
+        "rate": 92.5,
+        "percent": 2.5,
         "transactions": [],
         "payments": [],
-        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "last_active": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
+    
+    # Сохраняем
+    save_chat_data(chat_id, default_data)
+    return default_data
 
 def save_chat_data(chat_id, data):
     """Сохраняем данные чата"""
-    chat_file = get_chat_filename(chat_id)
+    chat_file = get_chat_file(chat_id)
+    data["last_active"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     try:
         with open(chat_file, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
         return True
     except Exception as e:
-        print(f"❌ Ошибка сохранения данных чата {chat_id}: {e}")
+        print(f"Ошибка сохранения данных чата {chat_id}: {e}")
         return False
 
-def load_global_admins():
+# ========== АДМИН-СИСТЕМА ==========
+
+def load_admins():
     """Загружаем список глобальных админов"""
     try:
         if os.path.exists(ADMINS_FILE):
@@ -110,14 +118,18 @@ def load_global_admins():
                 # Добавляем главного админа если его нет
                 if MAIN_ADMIN not in admins:
                     admins.append(MAIN_ADMIN)
-                    save_global_admins(admins)
+                    save_admins(admins)
                 return admins
     except:
         pass
-    return [MAIN_ADMIN]
+    
+    # Создаем новый файл с главным админом
+    admins = [MAIN_ADMIN]
+    save_admins(admins)
+    return admins
 
-def save_global_admins(admins):
-    """Сохраняем список глобальных админов"""
+def save_admins(admins):
+    """Сохраняем список админов"""
     try:
         with open(ADMINS_FILE, 'w') as f:
             json.dump(admins, f)
@@ -125,92 +137,110 @@ def save_global_admins(admins):
     except:
         return False
 
-def is_global_admin(user_id):
-    """Проверяем глобального админа"""
-    admins = load_global_admins()
+def is_admin(user_id):
+    """Проверяем админа"""
+    admins = load_admins()
     return user_id in admins
 
-def get_all_chats():
-    """Получаем список всех чатов"""
-    try:
-        chat_files = [f for f in os.listdir(CHATS_PATH) if f.startswith("chat_")]
-        chats = []
-        for file in chat_files:
-            try:
-                chat_id = int(file[5:-5])  # chat_123456789.json -> 123456789
-                data = load_chat_data(chat_id)
-                chats.append({
-                    "chat_id": chat_id,
-                    "title": data.get("chat_title", "Неизвестно"),
-                    "balance": data.get("balance", 0),
-                    "last_activity": data.get("transactions", [])[-1]["time"] if data.get("transactions") else "Нет активности"
-                })
-            except:
-                continue
-        return chats
-    except:
-        return []
+def is_main_admin(user_id):
+    """Проверяем главного админа"""
+    return user_id == MAIN_ADMIN
 
 # ========== КОМАНДЫ ==========
 
 @bot.message_handler(commands=['start'])
 def start_cmd(message):
-    if not is_global_admin(message.from_user.id):
+    if not is_admin(message.from_user.id):
+        bot.reply_to(message, "❌ У вас нет доступа к боту")
         return
     
     chat_id = message.chat.id
-    data = load_chat_data(chat_id)
+    chat_title = message.chat.title if message.chat.title else ""
     
-    # Если это группа, обновляем название
-    if message.chat.title:
-        data["chat_title"] = message.chat.title
-        save_chat_data(chat_id, data)
+    # Загружаем или создаем данные чата
+    data = load_chat_data(chat_id, chat_title)
     
+    # Определяем тип чата
     is_group = chat_id < 0
     chat_type = "👥 ГРУППА" if is_group else "👤 ЛИЧНЫЙ ЧАТ"
-    chat_name = message.chat.title if is_group else "ваш"
+    chat_name = chat_title if is_group else "Ваш"
     
     help_text = f"""✅ *БОТ БУХГАЛТЕРА ЗАПУЩЕН*
 
 {chat_type}: *{chat_name}*
 💰 *Баланс чата:* {data['balance']:.2f} USDT
+🔢 *Курс:* {data['rate']} | *%:* {data['percent']}
 
 *ОСНОВНЫЕ КОМАНДЫ:*
-➕ `+5000` - добавить 5000 в этот чат
+➕ `+5000` - добавить 5000₽ в этот чат
 💰 `выплата 1000` - выплатить из этого чата
 📊 `/balance` - баланс этого чата
 📈 `/stats` - статистика этого чата
-🔢 `/setrate 0` - курс для этого чата
-📌 `/setpercent 0` - процент для этого чата
+🔢 `/setrate 92.5` - курс для этого чата
+📌 `/setpercent 2.5` - процент для этого чата
+💬 `/chatid` - ID этого чата
 
 *ГЛОБАЛЬНЫЕ КОМАНДЫ:*
 🌐 `/allchats` - все чаты (только главный)
-👑 `/addadmin 123456789` - добавить глобального админа
-👥 `/admins` - список глобальных админов
+👑 `/addadmin 123456789` - добавить админа
+👥 `/admins` - список админов
+🆘 `/help` - помощь
+🧪 `/test` - тест работы
 """
     
     bot.reply_to(message, help_text, parse_mode='Markdown')
 
-# +5000 - ТОЛЬКО ДЛЯ ТЕКУЩЕГО ЧАТА
-@bot.message_handler(func=lambda m: m.text and m.text.startswith('+'))
-def add_money(message):
-    if not is_global_admin(message.from_user.id):
+@bot.message_handler(commands=['test'])
+def test_cmd(message):
+    if not is_admin(message.from_user.id):
         return
     
     chat_id = message.chat.id
-    data = load_chat_data(chat_id)
+    chat_title = message.chat.title if message.chat.title else "Личный чат"
+    
+    bot.reply_to(message, 
+        f"✅ *ТЕСТ ПРОЙДЕН*\n"
+        f"👤 Ваш ID: `{message.from_user.id}`\n"
+        f"💬 ID чата: `{chat_id}`\n"
+        f"📛 Название: {chat_title}\n"
+        f"📡 Бот работает: ДА",
+        parse_mode='Markdown')
+
+# ДОБАВЛЕНИЕ ДЕНЕГ
+@bot.message_handler(func=lambda m: m.text and m.text.startswith('+'))
+def add_money(message):
+    if not is_admin(message.from_user.id):
+        return
+    
+    chat_id = message.chat.id
+    data = load_chat_data(chat_id, message.chat.title)
     
     try:
-        amount = float(message.text[1:].strip().replace(',', '.'))
+        # Парсим сумму
+        amount_text = message.text[1:].strip().replace(',', '.').replace(' ', '')
+        if not amount_text:
+            bot.reply_to(message, "❌ Укажите сумму: +5000")
+            return
         
+        amount = float(amount_text)
+        
+        # Проверяем настройки
+        if data['rate'] <= 0:
+            bot.reply_to(message, "❌ Курс не установлен. Используйте /setrate 92.5")
+            return
+        
+        # Расчет
         usdt = amount / data['rate']
         fee = usdt * (data['percent'] / 100)
         net = usdt - fee
         
+        # Обновляем баланс
         data['balance'] += net
         data['total_earned'] += net
         
+        # Записываем транзакцию
         transaction = {
+            'id': len(data['transactions']) + 1,
             'time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             'operator': message.from_user.id,
             'amount_rub': amount,
@@ -223,7 +253,7 @@ def add_money(message):
         data['transactions'].append(transaction)
         save_chat_data(chat_id, data)
         
-        # Определяем тип чата для ответа
+        # Формируем ответ
         chat_type = "группы" if chat_id < 0 else "чата"
         chat_name = message.chat.title if chat_id < 0 else "личного чата"
         
@@ -231,27 +261,32 @@ def add_money(message):
 📊 *Курс чата:* {data['rate']} | *% чата:* {data['percent']}
 💵 *В USDT:* {usdt:.2f}
 📉 *Комиссия:* {fee:.2f}
+💰 *Чистыми:* {net:.2f}
 📈 *Баланс {chat_type}:* {data['balance']:.2f} USDT
 ⏰ *Время:* {transaction['time']}"""
         
         bot.reply_to(message, response, parse_mode='Markdown')
         
+    except ValueError:
+        bot.reply_to(message, "❌ Неверный формат. Пример: +5000 или +1250.50")
+    except ZeroDivisionError:
+        bot.reply_to(message, "❌ Курс не может быть 0. Используйте /setrate 92.5")
     except Exception as e:
-        bot.reply_to(message, f"❌ Ошибка: {e}")
+        bot.reply_to(message, f"❌ Ошибка: {str(e)}")
 
-# выплата 1000 - ТОЛЬКО ИЗ ТЕКУЩЕГО ЧАТА
+# ВЫПЛАТА
 @bot.message_handler(func=lambda m: m.text and ('выплата' in m.text.lower() or 'pay' in m.text.lower()))
 def payment(message):
-    if not is_global_admin(message.from_user.id):
+    if not is_admin(message.from_user.id):
         return
     
     chat_id = message.chat.id
-    data = load_chat_data(chat_id)
+    data = load_chat_data(chat_id, message.chat.title)
     
     try:
-        # Ищем число в сообщении
+        # Парсим сумму
         text = message.text.lower()
-        numbers = re.findall(r'\d+\.?\d*', text)
+        numbers = re.findall(r'\d+[.,]?\d*', text)
         
         if not numbers:
             bot.reply_to(message, "❌ Укажите сумму: выплата 500")
@@ -259,12 +294,14 @@ def payment(message):
         
         amount = float(numbers[0].replace(',', '.'))
         
+        # Проверяем баланс
         if amount > data['balance']:
             bot.reply_to(message, f"❌ Недостаточно средств в этом чате. Доступно: {data['balance']:.2f} USDT")
             return
         
         # Создаем выплату
         payment_data = {
+            'id': len(data['payments']) + 1,
             'time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             'operator': message.from_user.id,
             'amount': amount,
@@ -278,6 +315,7 @@ def payment(message):
         
         save_chat_data(chat_id, data)
         
+        # Формируем ответ
         chat_type = "группы" if chat_id < 0 else "чата"
         chat_name = message.chat.title if chat_id < 0 else "личного чата"
         
@@ -290,16 +328,15 @@ def payment(message):
         bot.reply_to(message, response, parse_mode='Markdown')
         
     except Exception as e:
-        bot.reply_to(message, f"❌ Ошибка: {e}")
+        bot.reply_to(message, f"❌ Ошибка: {str(e)}")
 
-# /balance - БАЛАНС ТЕКУЩЕГО ЧАТА
 @bot.message_handler(commands=['balance'])
 def balance_cmd(message):
-    if not is_global_admin(message.from_user.id):
+    if not is_admin(message.from_user.id):
         return
     
     chat_id = message.chat.id
-    data = load_chat_data(chat_id)
+    data = load_chat_data(chat_id, message.chat.title)
     
     chat_type = "группы" if chat_id < 0 else "чата"
     chat_name = message.chat.title if chat_id < 0 else "Личный чат"
@@ -313,21 +350,18 @@ def balance_cmd(message):
     
     bot.reply_to(message, response, parse_mode='Markdown')
 
-# /stats - СТАТИСТИКА ТЕКУЩЕГО ЧАТА
 @bot.message_handler(commands=['stats'])
 def stats_cmd(message):
-    if not is_global_admin(message.from_user.id):
+    if not is_admin(message.from_user.id):
         return
     
     chat_id = message.chat.id
-    data = load_chat_data(chat_id)
-    transactions = data.get('transactions', [])
-    payments = data.get('payments', [])
+    data = load_chat_data(chat_id, message.chat.title)
     
     # Статистика за сегодня
     today = datetime.now().strftime("%Y-%m-%d")
-    today_tx = [t for t in transactions if t.get('time', '').startswith(today)]
-    today_payments = [p for p in payments if p.get('time', '').startswith(today)]
+    today_tx = [t for t in data['transactions'] if t.get('time', '').startswith(today)]
+    today_payments = [p for p in data['payments'] if p.get('time', '').startswith(today)]
     
     chat_type = "группы" if chat_id < 0 else "чата"
     chat_name = message.chat.title if chat_id < 0 else "Личный чат"
@@ -341,92 +375,125 @@ def stats_cmd(message):
 💸 Сумма выплат: {sum(p.get('amount', 0) for p in today_payments):.2f} USDT
 
 *Общая статистика {chat_type}:*
-📥 Всего пополнений: {len(transactions)}
-📤 Всего выплат: {len(payments)}
+📥 Всего пополнений: {len(data['transactions'])}
+📤 Всего выплат: {len(data['payments'])}
 💰 Баланс: {data['balance']:.2f} USDT
 🔢 Курс: {data['rate']}
 📌 Процент: {data['percent']}%"""
     
     bot.reply_to(message, response, parse_mode='Markdown')
 
-# /setrate - УСТАНОВИТЬ КУРС ДЛЯ ТЕКУЩЕГО ЧАТА
 @bot.message_handler(commands=['setrate'])
 def setrate_cmd(message):
-    if not is_global_admin(message.from_user.id):
+    if not is_admin(message.from_user.id):
         return
     
     chat_id = message.chat.id
     
     try:
         rate = float(message.text.split()[1])
-        data = load_chat_data(chat_id)
+        data = load_chat_data(chat_id, message.chat.title)
         data['rate'] = rate
         save_chat_data(chat_id, data)
         
-        chat_type = "группы" if chat_id < 0 else "чата"
         chat_name = message.chat.title if chat_id < 0 else "чата"
-        
         bot.reply_to(message, f"✅ Курс для {chat_name} установлен: 1 USDT = {rate} RUB")
     except:
         bot.reply_to(message, "❌ Используйте: /setrate 92.5")
 
-# /setpercent - УСТАНОВИТЬ ПРОЦЕНТ ДЛЯ ТЕКУЩЕГО ЧАТА
 @bot.message_handler(commands=['setpercent'])
 def setpercent_cmd(message):
-    if not is_global_admin(message.from_user.id):
+    if not is_admin(message.from_user.id):
         return
     
     chat_id = message.chat.id
     
     try:
         percent = float(message.text.split()[1])
-        data = load_chat_data(chat_id)
+        data = load_chat_data(chat_id, message.chat.title)
         data['percent'] = percent
         save_chat_data(chat_id, data)
         
-        chat_type = "группы" if chat_id < 0 else "чата"
         chat_name = message.chat.title if chat_id < 0 else "чата"
-        
         bot.reply_to(message, f"✅ Процент комиссии для {chat_name} установлен: {percent}%")
     except:
         bot.reply_to(message, "❌ Используйте: /setpercent 2.5")
 
-# /allchats - ВСЕ ЧАТЫ (ТОЛЬКО ГЛАВНЫЙ АДМИН)
+@bot.message_handler(commands=['chatid'])
+def chatid_cmd(message):
+    chat_id = message.chat.id
+    is_group = chat_id < 0
+    chat_type = "Группа" if is_group else "Личный чат"
+    chat_name = message.chat.title if is_group else "Ваш"
+    
+    bot.reply_to(message, 
+        f"💬 *ИНФОРМАЦИЯ О ЧАТЕ*\n\n"
+        f"*Тип:* {chat_type}\n"
+        f"*Название:* {chat_name}\n"
+        f"*ID чата:* `{chat_id}`\n\n"
+        f"📁 *Файл данных:* `chat_{chat_id}.json`",
+        parse_mode='Markdown')
+
 @bot.message_handler(commands=['allchats'])
 def allchats_cmd(message):
-    if message.from_user.id != MAIN_ADMIN:
+    if not is_main_admin(message.from_user.id):
         bot.reply_to(message, "❌ Только главный администратор может просматривать все чаты")
         return
     
-    chats = get_all_chats()
-    
-    if not chats:
-        bot.reply_to(message, "📭 Нет активных чатов")
-        return
-    
-    total_balance = sum(chat['balance'] for chat in chats)
-    total_chats = len(chats)
-    
-    response = f"""🌐 *ВСЕ АКТИВНЫЕ ЧАТЫ*
+    try:
+        # Получаем все файлы чатов
+        chat_files = [f for f in os.listdir(DATA_DIR) if f.startswith('chat_')]
+        chats = []
+        
+        for file in chat_files:
+            try:
+                chat_id = int(file[5:-5])  # chat_123456789.json -> 123456789
+                data = load_chat_data(chat_id)
+                last_tx = data['transactions'][-1] if data['transactions'] else None
+                
+                chats.append({
+                    'id': chat_id,
+                    'title': data['chat_title'],
+                    'type': '👥 Группа' if chat_id < 0 else '👤 Личный',
+                    'balance': data['balance'],
+                    'rate': data['rate'],
+                    'percent': data['percent'],
+                    'last_active': data['last_active'],
+                    'last_tx': last_tx['time'] if last_tx else 'Нет операций'
+                })
+            except:
+                continue
+        
+        if not chats:
+            bot.reply_to(message, "📭 Нет активных чатов")
+            return
+        
+        # Сортируем по последней активности
+        chats.sort(key=lambda x: x['last_active'], reverse=True)
+        
+        total_balance = sum(c['balance'] for c in chats)
+        response = f"""🌐 *ВСЕ АКТИВНЫЕ ЧАТЫ*
 
 *Общая статистика:*
-👥 Чатов всего: {total_chats}
+👥 Всего чатов: {len(chats)}
 💰 Общий баланс: {total_balance:.2f} USDT
 
 *Список чатов:*\n"""
-    
-    for chat in chats:
-        chat_type = "👥 Группа" if chat['chat_id'] < 0 else "👤 Личный"
-        response += f"\n{chat_type} *{chat['title']}*\n"
-        response += f"💰 Баланс: {chat['balance']:.2f} USDT\n"
-        response += f"⏰ Активность: {chat['last_activity']}\n"
-    
-    bot.reply_to(message, response, parse_mode='Markdown')
+        
+        for chat in chats[:10]:  # Показываем первые 10
+            response += f"\n{chat['type']} *{chat['title']}*\n"
+            response += f"💰 Баланс: {chat['balance']:.2f} USDT\n"
+            response += f"🔢 Курс: {chat['rate']} | %: {chat['percent']}\n"
+            response += f"🕐 Активность: {chat['last_active']}\n"
+        
+        bot.reply_to(message, response, parse_mode='Markdown')
+        
+    except Exception as e:
+        bot.reply_to(message, f"❌ Ошибка: {str(e)}")
 
-# /addadmin - ДОБАВИТЬ ГЛОБАЛЬНОГО АДМИНА
 @bot.message_handler(commands=['addadmin'])
 def addadmin_cmd(message):
-    if message.from_user.id != MAIN_ADMIN:
+    if not is_main_admin(message.from_user.id):
         bot.reply_to(message, "❌ Только главный администратор может добавлять админов")
         return
     
@@ -437,72 +504,56 @@ def addadmin_cmd(message):
             return
         
         new_admin_id = int(args[1])
-        admins = load_global_admins()
+        admins = load_admins()
         
         if new_admin_id in admins:
             bot.reply_to(message, "❌ Этот пользователь уже администратор")
             return
         
         admins.append(new_admin_id)
-        if save_global_admins(admins):
-            bot.reply_to(message, f"✅ Пользователь {new_admin_id} добавлен как глобальный администратор")
-            
-            # Уведомляем нового админа
-            try:
-                bot.send_message(
-                    new_admin_id,
-                    f"👋 Вас добавили как глобального администратора бота-бухгалтера\n\n"
-                    f"Теперь вы можете управлять ботом в любых чатах!\n\n"
-                    f"Доступные команды:\n"
-                    f"+5000 - добавить сумму (в текущем чате)\n"
-                    f"выплата 1000 - выплатить (из текущего чата)\n"
-                    f"/balance - баланс текущего чата\n"
-                    f"/stats - статистика текущего чата"
-                )
-            except:
-                pass
-        else:
-            bot.reply_to(message, "❌ Ошибка сохранения списка админов")
+        save_admins(admins)
+        
+        bot.reply_to(message, f"✅ Пользователь {new_admin_id} добавлен как администратор")
+        
+        # Уведомляем нового админа
+        try:
+            bot.send_message(
+                new_admin_id,
+                f"👋 Вас добавили как администратора бота-бухгалтера!\n\n"
+                f"Теперь вы можете:\n"
+                f"• Управлять ботом в любых чатах\n"
+                f"• Добавлять деньги: +5000\n"
+                f"• Выплачивать: выплата 1000\n"
+                f"• Просматривать баланс: /balance\n\n"
+                f"Добавьте бота в группу и напишите /start"
+            )
+        except:
+            pass
             
     except ValueError:
         bot.reply_to(message, "❌ Неверный ID пользователя")
     except Exception as e:
-        bot.reply_to(message, f"❌ Ошибка: {e}")
+        bot.reply_to(message, f"❌ Ошибка: {str(e)}")
 
-# /admins - СПИСОК ГЛОБАЛЬНЫХ АДМИНОВ
 @bot.message_handler(commands=['admins'])
 def admins_cmd(message):
-    if message.from_user.id != MAIN_ADMIN:
+    if not is_main_admin(message.from_user.id):
         return
     
-    admins = load_global_admins()
-    if not admins:
-        bot.reply_to(message, "📭 Нет администраторов")
-        return
+    admins = load_admins()
     
-    admins_list = "\n".join([f"👤 {admin_id}" for admin_id in admins])
-    bot.reply_to(message, f"👥 *Список глобальных администраторов:*\n{admins_list}", parse_mode='Markdown')
-
-# /chatid - ПОКАЗАТЬ ID ЧАТА
-@bot.message_handler(commands=['chatid'])
-def chatid_cmd(message):
-    chat_id = message.chat.id
-    is_group = chat_id < 0
-    chat_type = "Группа" if is_group else "Личный чат"
-    chat_name = message.chat.title if is_group else "Ваш"
+    response = "👥 *Список администраторов:*\n\n"
+    for admin_id in admins:
+        response += f"• `{admin_id}`"
+        if admin_id == MAIN_ADMIN:
+            response += " 👑 (главный)"
+        response += "\n"
     
-    bot.reply_to(message, f"""💬 *ИНФОРМАЦИЯ О ЧАТЕ*
+    bot.reply_to(message, response, parse_mode='Markdown')
 
-*Тип:* {chat_type}
-*Название:* {chat_name}
-*ID чата:* `{chat_id}`
-
-*Путь к данным:* `chat_{chat_id}.json`""", parse_mode='Markdown')
-
-# /help - ПОМОЩЬ
 @bot.message_handler(commands=['help'])
 def help_cmd(message):
-    if not is_global_admin(message.from_user.id):
+    if not is_admin(message.from_user.id):
         return
     
     help_text = """📋 *СПИСОК КОМАНД*
@@ -517,18 +568,25 @@ def help_cmd(message):
 💬 `/chatid` - ID этого чата
 
 *ГЛОБАЛЬНЫЕ КОМАНДЫ:*
-👑 `/addadmin 123456789` - добавить глобального админа
-👥 `/admins` - список глобальных админов
+👑 `/addadmin 123456789` - добавить админа (только главный)
+👥 `/admins` - список админов (только главный)
 🌐 `/allchats` - все чаты (только главный)
+🧪 `/test` - тест работы бота
 🆘 `/help` - помощь"""
     
     bot.reply_to(message, help_text, parse_mode='Markdown')
 
-# Запуск бота
+# ========== ЗАПУСК ==========
 print("=" * 50)
-print("🚀 БОТ БУХГАЛТЕРА С МУЛЬТИЧАТОМ ЗАПУСКАЕТСЯ")
+print("🚀 БОТ БУХГАЛТЕРА ЗАПУЩЕН (ПОЛНАЯ ВЕРСИЯ)")
 print(f"👑 Главный админ: {MAIN_ADMIN}")
-print(f"📁 База данных: {BASE_PATH}")
+print(f"📁 Директория данных: {DATA_DIR}")
+print(f"🌐 Веб-сервер: http://0.0.0.0:{PORT}")
 print("=" * 50)
 
-bot.infinity_polling(timeout=60, long_polling_timeout=5)
+try:
+    bot.infinity_polling(timeout=60, long_polling_timeout=5)
+except Exception as e:
+    print(f"❌ Ошибка: {e}")
+    print("🔄 Перезапуск через 10 секунд...")
+    time.sleep(10)
