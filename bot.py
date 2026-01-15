@@ -9,17 +9,6 @@ import re
 TOKEN = "8274329230:AAE6NGyu5_R_RuiYvn6GB8HFAqMcbqTpvrw"
 MAIN_ADMIN = 7620190298
 
-# Очистка вебхуков
-def clear_webhook(token):
-    try:
-        telebot.apihelper.API_URL = f"https://api.telegram.org/bot{token}/"
-        telebot.apihelper._make_request(token, "deleteWebhook", {})
-        print("✅ Вебхуки очищены")
-    except:
-        print("⚠️ Ошибка очистки вебхуков")
-
-clear_webhook(TOKEN)
-
 # Инициализация бота
 bot = telebot.TeleBot(TOKEN)
 
