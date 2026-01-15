@@ -4,8 +4,31 @@ import telebot
 import telebot.apihelper
 from datetime import datetime
 import re
+import threading
+from flask import Flask
+
 
 # ТВОИ ДАННЫЕ
+# ========== ВЕБ-СЕРВЕР ДЛЯ RENDER ==========
+PORT = 10000  # Добавить эту строку
+
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "🤖 Бот бухгалтера работает!"
+
+@app.route('/health')
+def health():
+    return "OK", 200
+
+# Запускаем Flask в отдельном потоке
+def run_web_server():
+    app.run(host='0.0.0.0', port=PORT, debug=False)
+
+print(f"🚀 Запускаю веб-сервер на порту {PORT}...")
+web_thread = threading.Thread(target=run_web_server, daemon=True)
+web_thread.start()
 TOKEN = "8274329230:AAE6NGyu5_R_RuiYvn6GB8HFAqMcbqTpvrw"  # ⚠️ ЗАМЕНИ!
 MAIN_ADMIN = 7620190298
 
