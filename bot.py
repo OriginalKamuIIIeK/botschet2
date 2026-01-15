@@ -29,7 +29,7 @@ def run_web_server():
 print(f"🚀 Запускаю веб-сервер на порту {PORT}...")
 web_thread = threading.Thread(target=run_web_server, daemon=True)
 web_thread.start()
-TOKEN = "8274329230:AAE6NGyu5_R_RuiYvn6GB8HFAqMcbqTpvrw"  # ⚠️ ЗАМЕНИ!
+TOKEN = "8114014716:AAFwW5y7O3goMXWtZm6scpxEj-5VloP37ro"  # ⚠️ ЗАМЕНИ!
 MAIN_ADMIN = 7620190298
 
 
