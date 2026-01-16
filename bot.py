@@ -33,9 +33,6 @@ web_thread = threading.Thread(target=run_web_server, daemon=True)
 web_thread.start()
 time.sleep(2)
 
-
-
-
 # ========== СИСТЕМА ХРАНЕНИЯ ==========
 DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -48,7 +45,6 @@ SETTINGS_FILE = os.path.join(DATA_DIR, "global_settings.json")
 
 def get_chat_file(chat_id):
     """Получаем путь к файлу данных чата"""
-    # Для групп используем префикс group_, для личных чатов - chat_
     if chat_id < 0:  # Группа
         return os.path.join(DATA_DIR, f"group_{abs(chat_id)}.json")
     else:  # Личный чат
@@ -62,7 +58,6 @@ def load_chat_data(chat_id, chat_title=""):
         if os.path.exists(chat_file):
             with open(chat_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                # Конвертируем значения в float
                 for key in ['balance', 'total_earned', 'total_paid', 'rate', 'percent']:
                     if key in data:
                         data[key] = float(data[key])
@@ -93,41 +88,6 @@ def load_chat_data(chat_id, chat_title=""):
         "last_active": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
     
-    # Сохраняем
-    save_chat_data(chat_id, default_data)
-    return default_data
-
-def save_chat_data(chat_id, data):
-    """Сохраняем данные чата"""
-    chat_file = get_chat_file(chat_id)
-    data["last_active"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    try:
-        with open(chat_file, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        return True
-    except Exception as e:
-        print(f"Ошибка сохранения данных чата {chat_id}: {e}")
-        return False
-    
-    # Создаем новые данные
-    title = chat_title if chat_title else ("Личный чат" if chat_id > 0 else "Группа")
-    
-    default_data = {
-        "chat_id": chat_id,
-        "chat_title": title,
-        "balance": 0.0,
-        "total_earned": 0.0,
-        "total_paid": 0.0,
-        "rate": 92.5,
-        "percent": 2.5,
-        "transactions": [],
-        "payments": [],
-        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "last_active": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    }
-    
-    # Сохраняем
     save_chat_data(chat_id, default_data)
     return default_data
 
@@ -152,7 +112,6 @@ def load_admins():
         if os.path.exists(ADMINS_FILE):
             with open(ADMINS_FILE, 'r') as f:
                 admins = json.load(f)
-                # Добавляем главного админа если его нет
                 if MAIN_ADMIN not in admins:
                     admins.append(MAIN_ADMIN)
                     save_admins(admins)
@@ -160,7 +119,6 @@ def load_admins():
     except:
         pass
     
-    # Создаем новый файл с главным админом
     admins = [MAIN_ADMIN]
     save_admins(admins)
     return admins
@@ -194,10 +152,8 @@ def start_cmd(message):
     chat_id = message.chat.id
     chat_title = message.chat.title if message.chat.title else ""
     
-    # Загружаем или создаем данные чата
     data = load_chat_data(chat_id, chat_title)
     
-    # Определяем тип чата
     is_group = chat_id < 0
     chat_type = "👥 ГРУППА" if is_group else "👤 ЛИЧНЫЙ ЧАТ"
     chat_name = chat_title if is_group else "Ваш"
@@ -243,7 +199,6 @@ def test_cmd(message):
         f"📡 Бот работает: ДА",
         parse_mode='Markdown')
 
-# ДОБАВЛЕНИЕ ДЕНЕГ
 @bot.message_handler(func=lambda m: m.text and m.text.startswith('+'))
 def add_money(message):
     if not is_admin(message.from_user.id):
@@ -253,7 +208,6 @@ def add_money(message):
     data = load_chat_data(chat_id, message.chat.title)
     
     try:
-        # Парсим сумму
         amount_text = message.text[1:].strip().replace(',', '.').replace(' ', '')
         if not amount_text:
             bot.reply_to(message, "❌ Укажите сумму: +5000")
@@ -261,21 +215,17 @@ def add_money(message):
         
         amount = float(amount_text)
         
-        # Проверяем настройки
         if data['rate'] <= 0:
             bot.reply_to(message, "❌ Курс не установлен. Используйте /setrate 92.5")
             return
         
-        # Расчет
         usdt = amount / data['rate']
         fee = usdt * (data['percent'] / 100)
         net = usdt - fee
         
-        # Обновляем баланс
         data['balance'] += net
         data['total_earned'] += net
         
-        # Записываем транзакцию
         transaction = {
             'id': len(data['transactions']) + 1,
             'time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -290,7 +240,6 @@ def add_money(message):
         data['transactions'].append(transaction)
         save_chat_data(chat_id, data)
         
-        # Формируем ответ
         chat_type = "группы" if chat_id < 0 else "чата"
         chat_name = message.chat.title if chat_id < 0 else "личного чата"
         
@@ -311,7 +260,6 @@ def add_money(message):
     except Exception as e:
         bot.reply_to(message, f"❌ Ошибка: {str(e)}")
 
-# ВЫПЛАТА
 @bot.message_handler(func=lambda m: m.text and ('выплата' in m.text.lower() or 'pay' in m.text.lower()))
 def payment(message):
     if not is_admin(message.from_user.id):
@@ -321,7 +269,6 @@ def payment(message):
     data = load_chat_data(chat_id, message.chat.title)
     
     try:
-        # Парсим сумму
         text = message.text.lower()
         numbers = re.findall(r'\d+[.,]?\d*', text)
         
@@ -331,12 +278,10 @@ def payment(message):
         
         amount = float(numbers[0].replace(',', '.'))
         
-        # Проверяем баланс
         if amount > data['balance']:
             bot.reply_to(message, f"❌ Недостаточно средств в этом чате. Доступно: {data['balance']:.2f} USDT")
             return
         
-        # Создаем выплату
         payment_data = {
             'id': len(data['payments']) + 1,
             'time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -345,14 +290,12 @@ def payment(message):
             'balance_before': data['balance']
         }
         
-        # Обновляем баланс
         data['balance'] -= amount
         data['total_paid'] += amount
         data['payments'].append(payment_data)
         
         save_chat_data(chat_id, data)
         
-        # Формируем ответ
         chat_type = "группы" if chat_id < 0 else "чата"
         chat_name = message.chat.title if chat_id < 0 else "личного чата"
         
@@ -416,22 +359,68 @@ def stats_cmd(message):
 
 *За сегодня ({today}):*
 📥 Пополнений: {len(today_tx)}
-💰 Сумма в валюте: {today_rub:,.2f} 
+💰 Сумма в рублях: {today_rub:,.2f} ₽
 💵 Сумма в USDT: {today_usdt:.2f} USDT
 📤 Выплат: {len(today_payments)}
 💸 Сумма выплат: {today_payments_usdt:.2f} USDT
 
 *Общая статистика {chat_type}:*
 📥 Всего пополнений: {len(data['transactions'])}
-💰 Общая сумма пополнений: {total_rub:,.2f} 
+💰 Общая сумма пополнений: {total_rub:,.2f} ₽
 💵 В USDT: {total_usdt:.2f} USDT
 📤 Всего выплат: {len(data['payments'])}
 💸 Сумма выплат: {data['total_paid']:.2f} USDT
 📈 Текущий баланс: {data['balance']:.2f} USDT
-🔢 Курс: {data['rate']} /USDT
+🔢 Курс: {data['rate']} ₽/USDT
 📌 Процент: {data['percent']}%"""
     
     bot.reply_to(message, response, parse_mode='Markdown')
+
+@bot.message_handler(commands=['transactions'])
+def transactions_cmd(message):
+    if not is_admin(message.from_user.id):
+        return
+    
+    chat_id = message.chat.id
+    data = load_chat_data(chat_id, message.chat.title)
+    
+    if not data['transactions']:
+        bot.reply_to(message, "📭 Нет записей о пополнениях")
+        return
+    
+    # Показываем последние 10 транзакций
+    recent_tx = data['transactions'][-10:]
+    
+    chat_name = message.chat.title if chat_id < 0 else "Личный чат"
+    response = f"""📋 *ПОСЛЕДНИЕ ПОПОЛНЕНИЯ {chat_name.upper()}*
+Всего записей: {len(data['transactions'])}
+Показано последних: {len(recent_tx)}
+"""
+    
+    total_rub = 0
+    total_usdt = 0
+    
+    for tx in recent_tx:
+        rub = tx.get('amount_rub', 0)
+        usdt = tx.get('net', 0)
+        total_rub += rub
+        total_usdt += usdt
+        
+        response += f"\n📅 {tx.get('time', '')}"
+        response += f"\n➕ {rub:,.2f} ₽ → {usdt:.2f} USDT"
+        response += f"\nКомиссия: {tx.get('fee', 0):.2f} USDT"
+        response += f"\nБаланс после: {tx.get('balance_after', 0):.2f} USDT\n"
+    
+    response += f"\n📊 Итого за показанный период:"
+    response += f"\n💰 {total_rub:,.2f} ₽"
+    response += f"\n💵 {total_usdt:.2f} USDT"
+    
+    if len(response) > 4000:
+        parts = [response[i:i+4000] for i in range(0, len(response), 4000)]
+        for part in parts:
+            bot.send_message(chat_id, part, parse_mode='Markdown')
+    else:
+        bot.reply_to(message, response, parse_mode='Markdown')
 
 @bot.message_handler(commands=['setrate'])
 def setrate_cmd(message):
@@ -491,21 +480,28 @@ def allchats_cmd(message):
         return
     
     try:
-        # Получаем все файлы чатов
-        chat_files = [f for f in os.listdir(DATA_DIR) if f.startswith('chat_')]
+        chat_files = [f for f in os.listdir(DATA_DIR) if f.startswith('chat_') or f.startswith('group_')]
         chats = []
         
         for file in chat_files:
             try:
-                chat_id = int(file[5:-5])  # chat_123456789.json -> 123456789
+                if file.startswith('chat_'):
+                    chat_id = int(file[5:-5])
+                else:
+                    chat_id = -int(file[6:-5])
+                    
                 data = load_chat_data(chat_id)
                 last_tx = data['transactions'][-1] if data['transactions'] else None
+                
+                # Вычисляем общую сумму в рублях для этого чата
+                total_rub = sum(t.get('amount_rub', 0) for t in data['transactions'])
                 
                 chats.append({
                     'id': chat_id,
                     'title': data['chat_title'],
                     'type': '👥 Группа' if chat_id < 0 else '👤 Личный',
                     'balance': data['balance'],
+                    'total_rub': total_rub,
                     'rate': data['rate'],
                     'percent': data['percent'],
                     'last_active': data['last_active'],
@@ -518,21 +514,23 @@ def allchats_cmd(message):
             bot.reply_to(message, "📭 Нет активных чатов")
             return
         
-        # Сортируем по последней активности
         chats.sort(key=lambda x: x['last_active'], reverse=True)
         
         total_balance = sum(c['balance'] for c in chats)
+        total_rub_all = sum(c['total_rub'] for c in chats)
         response = f"""🌐 *ВСЕ АКТИВНЫЕ ЧАТЫ*
 
 *Общая статистика:*
 👥 Всего чатов: {len(chats)}
 💰 Общий баланс: {total_balance:.2f} USDT
+💵 Общая сумма пополнений: {total_rub_all:,.2f} ₽
 
 *Список чатов:*\n"""
         
-        for chat in chats[:10]:  # Показываем первые 10
+        for chat in chats[:10]:
             response += f"\n{chat['type']} *{chat['title']}*\n"
             response += f"💰 Баланс: {chat['balance']:.2f} USDT\n"
+            response += f"💵 Пополнения: {chat['total_rub']:,.2f} ₽\n"
             response += f"🔢 Курс: {chat['rate']} | %: {chat['percent']}\n"
             response += f"🕐 Активность: {chat['last_active']}\n"
         
@@ -565,7 +563,6 @@ def addadmin_cmd(message):
         
         bot.reply_to(message, f"✅ Пользователь {new_admin_id} добавлен как администратор")
         
-        # Уведомляем нового админа
         try:
             bot.send_message(
                 new_admin_id,
@@ -612,7 +609,8 @@ def help_cmd(message):
 ➕ `+5000` - добавить 5000₽ в этот чат
 💰 `выплата 1000` - выплатить из этого чата
 📊 `/balance` - баланс этого чата
-📈 `/stats` - статистика этого чата
+📈 `/stats` - статистика этого чата (с рублями)
+📋 `/transactions` - последние пополнения
 🔢 `/setrate 92.5` - курс для этого чата
 📌 `/setpercent 2.5` - процент для этого чата
 💬 `/chatid` - ID этого чата
