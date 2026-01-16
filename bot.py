@@ -48,7 +48,11 @@ SETTINGS_FILE = os.path.join(DATA_DIR, "global_settings.json")
 
 def get_chat_file(chat_id):
     """Получаем путь к файлу данных чата"""
-    return os.path.join(DATA_DIR, f"chat_{chat_id}.json")
+    # Для групп используем префикс group_, для личных чатов - chat_
+    if chat_id < 0:  # Группа
+        return os.path.join(DATA_DIR, f"group_{abs(chat_id)}.json")
+    else:  # Личный чат
+        return os.path.join(DATA_DIR, f"chat_{chat_id}.json")
 
 def load_chat_data(chat_id, chat_title=""):
     """Загружаем или создаем данные чата"""
@@ -65,6 +69,46 @@ def load_chat_data(chat_id, chat_title=""):
                 return data
     except Exception as e:
         print(f"Ошибка загрузки данных чата {chat_id}: {e}")
+    
+    # Создаем новые данные
+    if chat_id < 0:  # Группа
+        title = chat_title if chat_title else f"Группа {abs(chat_id)}"
+        chat_type = "group"
+    else:  # Личный чат
+        title = "Личный чат"
+        chat_type = "chat"
+    
+    default_data = {
+        "chat_id": chat_id,
+        "chat_type": chat_type,
+        "chat_title": title,
+        "balance": 0.0,
+        "total_earned": 0.0,
+        "total_paid": 0.0,
+        "rate": 92.5,
+        "percent": 2.5,
+        "transactions": [],
+        "payments": [],
+        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "last_active": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+    
+    # Сохраняем
+    save_chat_data(chat_id, default_data)
+    return default_data
+
+def save_chat_data(chat_id, data):
+    """Сохраняем данные чата"""
+    chat_file = get_chat_file(chat_id)
+    data["last_active"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    try:
+        with open(chat_file, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        return True
+    except Exception as e:
+        print(f"Ошибка сохранения данных чата {chat_id}: {e}")
+        return False
     
     # Создаем новые данные
     title = chat_title if chat_title else ("Личный чат" if chat_id > 0 else "Группа")
@@ -356,6 +400,15 @@ def stats_cmd(message):
     today_tx = [t for t in data['transactions'] if t.get('time', '').startswith(today)]
     today_payments = [p for p in data['payments'] if p.get('time', '').startswith(today)]
     
+    # Вычисляем общую сумму пополнений в рублях
+    total_rub = sum(t.get('amount_rub', 0) for t in data['transactions'])
+    total_usdt = data['total_earned']
+    
+    # Вычисляем сегодняшние суммы
+    today_rub = sum(t.get('amount_rub', 0) for t in today_tx)
+    today_usdt = sum(t.get('net', 0) for t in today_tx)
+    today_payments_usdt = sum(p.get('amount', 0) for p in today_payments)
+    
     chat_type = "группы" if chat_id < 0 else "чата"
     chat_name = message.chat.title if chat_id < 0 else "Личный чат"
     
@@ -363,15 +416,19 @@ def stats_cmd(message):
 
 *За сегодня ({today}):*
 📥 Пополнений: {len(today_tx)}
-💰 Сумма: {sum(t.get('net', 0) for t in today_tx):.2f} USDT
+💰 Сумма в валюте: {today_rub:,.2f} 
+💵 Сумма в USDT: {today_usdt:.2f} USDT
 📤 Выплат: {len(today_payments)}
-💸 Сумма выплат: {sum(p.get('amount', 0) for p in today_payments):.2f} USDT
+💸 Сумма выплат: {today_payments_usdt:.2f} USDT
 
 *Общая статистика {chat_type}:*
 📥 Всего пополнений: {len(data['transactions'])}
+💰 Общая сумма пополнений: {total_rub:,.2f} 
+💵 В USDT: {total_usdt:.2f} USDT
 📤 Всего выплат: {len(data['payments'])}
-💰 Баланс: {data['balance']:.2f} USDT
-🔢 Курс: {data['rate']}
+💸 Сумма выплат: {data['total_paid']:.2f} USDT
+📈 Текущий баланс: {data['balance']:.2f} USDT
+🔢 Курс: {data['rate']} /USDT
 📌 Процент: {data['percent']}%"""
     
     bot.reply_to(message, response, parse_mode='Markdown')
